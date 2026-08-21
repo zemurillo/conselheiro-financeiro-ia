@@ -64,7 +64,7 @@ class BaseAgent(ABC):
         mas qualquer agente pode sobrescrever se precisar de algo
         diferente (ex: injetar um contexto extra).
         """
-        messages = [{"role": "system", "content": self.system_prompt}]  # 1. instrução de comportamento que cada agente irá implementar
+        messages = [{"role": "system", "content": self.system_prompt}]  # 1. instrução de comportamento que cada agente irá implementar --> pega da instância
         messages.extend(context.history) # 2. histórico da conversa (cada item é algo como {"role": "user", "content": "..."})
         messages.append({"role": "user", "content": context.user_message}) # 3. mensagem do usuário (o que ele acabou de digitar)
         return messages

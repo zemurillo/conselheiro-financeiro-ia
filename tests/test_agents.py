@@ -31,8 +31,9 @@ COMO RODAR:
 import pytest
 
 from src.agents.base import BaseAgent
+from src.agents.guardrails import AgentGuardrails
 from src.agents.investimentos import AgenteInvestimentos
-from src.core.schemas import AgentContext, AgentRole
+from src.core.schemas import AgentContext, AgentRole, GuardrailDecision
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +67,19 @@ class _LLMFalso:
     def invoke(self, messages: list[dict[str, str]]) -> _RespostaFalsa:
         self.mensagens_recebidas = messages
         return _RespostaFalsa(self._resposta)
+
+
+class _LLMGuardrailFalso:
+    def __init__(self, decisao: GuardrailDecision) -> None:
+        self.decisao = decisao
+        self.mensagens_recebidas = None
+
+    def with_structured_output(self, schema):
+        return self
+
+    def invoke(self, messages):
+        self.mensagens_recebidas = messages
+        return self.decisao
 
 
 # ---------------------------------------------------------------------------
@@ -204,3 +218,32 @@ def test_agente_investimentos_inclui_historico_da_conversa(llm_falso):
     assert len(mensagens) == 4
     assert mensagens[1]["content"] == "O que é tesouro direto?"
     assert mensagens[2]["content"] == "É uma plataforma pública."
+
+
+def test_guardrails_aprova_e_devolve_resposta_segura(contexto_exemplo):
+    llm = _LLMGuardrailFalso(
+        GuardrailDecision(approved=True, safe_response="Explicação educativa.")
+    )
+
+    resposta = AgentGuardrails(llm).run(contexto_exemplo)
+
+    assert resposta.approved is True
+    assert resposta.requires_review is False
+    assert resposta.content == "Explicação educativa."
+
+
+def test_guardrails_bloqueia_resposta_rejeitada(contexto_exemplo):
+    llm = _LLMGuardrailFalso(
+        GuardrailDecision(
+            approved=False,
+            reason="Recomendação de ativo específico.",
+            safe_response="Não deve ser liberada.",
+        )
+    )
+
+    resposta = AgentGuardrails(llm).run(contexto_exemplo)
+
+    assert resposta.approved is False
+    assert resposta.requires_review is True
+    assert resposta.content == ""
+    assert resposta.metadata["reason"] == "Recomendação de ativo específico."
