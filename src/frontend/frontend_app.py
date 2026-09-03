@@ -77,7 +77,7 @@ if pergunta:
                 #
                 #   1. `dados["agent"]` -- mostre uma legenda acima da
                 #      resposta, tipo:
-                #          st.caption(f"🏦 respondido por: {dados['agent']}")
+                #          
                 #      antes do st.markdown(texto_resposta) abaixo.
                 #
                 #   2. `dados["blocked"]` -- quando vier True (depois
@@ -88,7 +88,11 @@ if pergunta:
                 #      resposta normal.
 
                 texto_resposta = dados["content"]
-                st.markdown(texto_resposta)
+                if dados["blocked"]:
+                    st.warning(texto_resposta)
+                else:
+                    st.caption(f"🏦 respondido por: {dados['agent']}")
+                    st.markdown(texto_resposta)
 
             except httpx.HTTPError as e:
                 # Cobre tanto "API fora do ar" quanto "API devolveu
