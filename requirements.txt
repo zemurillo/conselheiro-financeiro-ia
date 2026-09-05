@@ -36,3 +36,6 @@ pytest-cov>=5.0.0
 ruff>=0.7.0
 black>=24.10.0
 pre-commit>=4.0.0
+
+#Para conectar com o banco de dados PostgreSQL
+psycopg2-binary>=2.9.0
