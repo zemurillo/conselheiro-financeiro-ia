@@ -1,5 +1,7 @@
 # Arquitetura
 
+> 🇬🇧 *An English version of this document is available [below](#architecture-en).*
+
 ## Visão geral
 
 O sistema é dividido em três camadas desacopladas: **frontend** (Streamlit),
@@ -93,3 +95,106 @@ flowchart TD
   período parado.
 - A API na Render (free tier) "dorme" após um tempo sem tráfego — a primeira
   requisição depois disso pode levar 30-50s para responder.
+
+---
+
+<a name="architecture-en"></a>
+# Architecture (EN)
+
+> 🇧🇷 *A versão em português está [acima](#arquitetura).*
+
+## Overview
+
+The system is split into three decoupled layers: **frontend** (Streamlit),
+**API** (FastAPI), and the **agent core** (LangGraph). The frontend never
+talks to the agents directly — every interaction goes through the API, which
+means the interface (web, mobile, WhatsApp) can be swapped without touching
+business logic.
+
+```mermaid
+flowchart TD
+    U([User]) --> S[Streamlit - UI]
+    S -->|POST /chat| A[API - FastAPI]
+    A --> O[Orchestrator agent]
+
+    O --> D[Diagnosis agent]
+    O --> V[Debt agent]
+    O --> I[Investment agent]
+    O --> P[Planning agent]
+
+    D --> G[Guardrails agent]
+    V --> G
+    I --> G
+    P --> G
+
+    G -->|validated response| A
+    A -->|JSON| S
+    S --> U
+
+    A -.->|reads/writes history| BD[(Postgres/SQLite)]
+```
+
+## Each agent's role
+
+| Agent | Responsibility | Never does |
+|---|---|---|
+| Orchestrator | Interprets user intent and routes to the right specialist(s) | Answer domain questions directly |
+| Diagnosis | Organizes the user's reported financial situation (income, expenses, debts) | Give investment advice |
+| Debt | Explains payoff strategies (snowball, avalanche, renegotiation) | Point to a specific creditor or institution |
+| Investment | Teaches concepts (fixed/variable income, risk profile, government bonds, REITs) | Recommend a specific asset/ticker |
+| Planning | Helps structure goals and an emergency fund | Promise a return or a timeframe for results |
+| Guardrails | Audits any agent's response before it reaches the user | Let a specific investment recommendation through |
+
+## Request flow
+
+1. The user sends a message in Streamlit
+2. Streamlit makes a `POST /chat` call to the API with the message and `session_id`
+3. FastAPI validates the payload (Pydantic), reads the session's history from
+   the database, and invokes the LangGraph graph
+4. The orchestrator decides which specialist(s) to call
+5. The specialist(s) generate the response
+6. The guardrails agent audits the response (blocking specific recommendations)
+7. The API persists the exchange (question + answer) to the database and
+   returns the result as JSON
+8. Streamlit renders it in the chat
+
+## Design decisions
+
+- **API as a middle layer**: decouples frontend from business logic, and lets
+  each layer scale/deploy independently.
+- **Guardrails as a dedicated agent**: rather than relying only on each
+  specialist's prompt, there's an explicit audit layer — a governance
+  decision, not just an engineering one.
+- **No specific asset recommendations**: a product constraint enforced both
+  in the prompt AND in the guardrail (defense in depth).
+- **LLM factory (`llm_factory.py`)**: the provider (OpenAI/Anthropic/Groq) is
+  chosen via environment variable rather than hardcoded — no agent needs to
+  change to switch models.
+- **Repository layer (`repository.py`)**: isolates the rest of the codebase
+  from SQLAlchemy details — swapping SQLite for Postgres required no changes
+  to the API or the agents, just the `DATABASE_URL` variable.
+
+## Stack
+
+- **Orchestration**: LangGraph
+- **LLM**: OpenAI (default), with Anthropic and Groq support via a provider
+  factory (`LLM_PROVIDER` in `.env`)
+- **API**: FastAPI + Pydantic
+- **Frontend**: Streamlit
+- **Persistence**: SQLite in development · Postgres (Supabase, via a
+  transaction-mode connection pooler) in production
+- **Deploy**: API on Render (free tier) · Frontend on Streamlit Community
+  Cloud · Database on Supabase
+
+## Operational notes (learned during deployment)
+
+- Supabase's connection pooler has to be used instead of the direct Postgres
+  connection — Render doesn't have IPv6 egress enabled, and Supabase's direct
+  connection resolves to an IPv6 address.
+- The `?pgbouncer=true` parameter (used by some ORMs) isn't recognized by the
+  `psycopg2` driver and needs to be removed from `DATABASE_URL`.
+- Free Supabase projects are paused after 7 days of inactivity — they need to
+  be manually reactivated from the dashboard before a demo after a quiet
+  period.
+- The Render free-tier API "sleeps" after a period without traffic — the
+  first request afterward can take 30-50s to respond.
