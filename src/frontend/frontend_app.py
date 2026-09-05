@@ -14,8 +14,11 @@ import uuid
 
 import httpx
 import streamlit as st
+import os
 
-API_URL = "http://localhost:8000/chat"  # ajuste se sua API rodar em outro host/porta
+#API_URL = "http://localhost:8000/chat"  # ajuste se sua API rodar em outro host/porta
+
+API_URL = st.secrets.get("API_URL", os.environ.get("API_URL", "http://localhost:8000/chat"))
 
 st.set_page_config(page_title="Conselheiro Financeiro IA", page_icon="💰")
 st.title("💰 Conselheiro Financeiro IA")
